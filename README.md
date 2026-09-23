@@ -1,15 +1,7 @@
 # Catalog API
 
-This repository contains the catalog API and a small load generator. Start it
-with `make up`, run the given tests with `make test`, generate a 100-request
-sample with `make load`, and stop it with `make down`.
+The catalog API and a small load generator. `make up` starts it, `make test` runs the given tests, `make load` sends a 100-request sample, and `make down` stops it.
 
-The API is at `http://localhost:8020`. `GET /v1/catalog/{sku}` returns a
-catalog item. The local fault controls are `PUT /_control/fault` with
-`error_every`, `latency_ms`, and `busy_ms` fields, and
-`DELETE /_control/fault`. `make fault` and `make clear-fault` use them. The
-load generator prints request count, error rate, mean latency, and p95.
+The API is at `http://localhost:8020`, and `GET /v1/catalog/{sku}` returns one catalog item. The fault controls are `PUT /_control/fault`, which takes `error_every`, `latency_ms` and `busy_ms`, and `DELETE /_control/fault`, which clears them; `make fault` and `make clear-fault` call them for you. The load generator prints the request count, error rate, mean latency and p95.
 
-The service currently has ordinary application logs and no monitoring stack.
-It is a containerized API intended to be deployed with the included compose
-file.
+Right now the service has plain application logs and no monitoring. It's a containerized API meant to be deployed with the included compose file.
