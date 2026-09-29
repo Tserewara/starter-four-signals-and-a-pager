@@ -1,27 +1,47 @@
-PROJECT=bgym_signals
-.PHONY: up down test load fault fault-latency clear-fault logs
+COMPOSE = docker compose -f harness/compose.yaml
+.PHONY: up down contract load fault fault-latency clear-fault rehearse rehearse-latency pages reload logs
 
+# The service, the price store, background traffic, Prometheus, Alertmanager,
+# the pager and Grafana.
 up:
-	COMPOSE_PROJECT_NAME=$(PROJECT) docker compose up -d --build
+	$(COMPOSE) up -d --build
 
 down:
-	COMPOSE_PROJECT_NAME=$(PROJECT) docker compose down
+	$(COMPOSE) down
 
-test:
-	COMPOSE_PROJECT_NAME=$(PROJECT) docker compose exec api python3 -m unittest discover -s tests -v
+# The given behaviour, black-box. Passes on the starter; must still pass after.
+contract:
+	$(COMPOSE) run --rm --build contract
 
+# 100 requests, ten at a time, then one summary line.
 load:
-	COMPOSE_PROJECT_NAME=$(PROJECT) docker compose run --rm loadgen python3 loadgen.py --count 100
+	$(COMPOSE) run --rm --build tools python3 loadgen.py --count 100
 
+# Every fifth price-store call fails (and every call takes 250 ms).
 fault:
-	curl -fsS -X PUT http://localhost:8020/_control/fault -H 'Content-Type: application/json' -d '{"error_every":5,"latency_ms":250}'
+	curl -fsS -X PUT http://localhost:9100/_control/fault -H 'Content-Type: application/json' -d '{"error_every":5,"latency_ms":250}'; echo
 
-# Slow responses only, 2.5s each: over the SLO's two-second bar.
+# Every price-store call takes 2.5 seconds, and none fails.
 fault-latency:
-	curl -fsS -X PUT http://localhost:8020/_control/fault -H 'Content-Type: application/json' -d '{"latency_ms":2500}'
+	curl -fsS -X PUT http://localhost:9100/_control/fault -H 'Content-Type: application/json' -d '{"latency_ms":2500}'; echo
 
 clear-fault:
-	curl -fsS -X DELETE http://localhost:8020/_control/fault
+	curl -fsS -X DELETE http://localhost:9100/_control/fault; echo
+
+# Fault on, background traffic running: seconds until the pager gets a page.
+rehearse:
+	$(COMPOSE) run --rm --build tools python3 rehearse.py error
+
+rehearse-latency:
+	$(COMPOSE) run --rm --build tools python3 rehearse.py latency
+
+# Every notification the pager has received.
+pages:
+	@curl -fsS http://localhost:9099/pages | python3 -m json.tool
+
+# Reread monitoring/rules/ without restarting Prometheus.
+reload:
+	curl -fsS -X POST http://localhost:9090/-/reload
 
 logs:
-	COMPOSE_PROJECT_NAME=$(PROJECT) docker compose logs -f api
+	$(COMPOSE) logs -f service

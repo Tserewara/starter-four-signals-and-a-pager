@@ -1,0 +1,34 @@
+openapi: 3.0.3
+info:
+  title: catalog
+  version: 1.0.0
+  description: >
+    The catalog as the starter ships it. A port must answer the same routes,
+    listen on port 8000 and read STORE_URL, the price store's address.
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: The service is up.
+          content:
+            application/json:
+              schema: {type: object, required: [status], properties: {status: {type: string, enum: [ok]}}}
+  /v1/catalog/{sku}:
+    get:
+      parameters:
+        - {name: sku, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: The item with its current price, read from the price store.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sku, price, currency]
+                properties:
+                  sku: {type: string}
+                  price: {type: integer, description: in cents}
+                  currency: {type: string}
+        "503":
+          description: The price store failed or could not be reached.

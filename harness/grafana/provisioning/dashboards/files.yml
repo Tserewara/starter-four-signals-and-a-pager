@@ -1,0 +1,7 @@
+# Every dashboard JSON in the repository's monitoring/dashboards/ is loaded.
+apiVersion: 1
+providers:
+  - name: repository
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,7 +1,63 @@
-# Catalog API
+# Catalog
 
-The catalog API and a small load generator. `make up` starts it, `make test` runs the given tests, `make load` sends a 100-request sample, and `make down` stops it.
+The catalog service, and the world around it. Checkout calls
+`GET /v1/catalog/{sku}` for the current price; the service reads it from a
+price store.
 
-The API is at `http://localhost:8020`, and `GET /v1/catalog/{sku}` returns one catalog item. The fault controls are `PUT /_control/fault`, which takes `error_every`, `latency_ms` and `busy_ms`, and `DELETE /_control/fault`, which clears them; `make fault` turns on failing calls with a little extra latency, `make fault-latency` makes every call take 2.5 seconds without failing, and `make clear-fault` turns both off. The load generator sends its requests one after another, so with the latency fault on a 100-request `make load` takes about four minutes; it keeps traffic flowing while you watch the alerts. The load generator prints the request count, error rate, mean latency and p95.
+```
+service/     the catalog: Python and FastAPI
+harness/     the price store (faked), background traffic, Prometheus,
+             Alertmanager, a stand-in pager and Grafana
+contract/    black-box tests of what the catalog answers
+monitoring/  rules/ and dashboards/, empty: Prometheus and Grafana load
+             whatever you put there
+```
 
-Right now the service has plain application logs and no monitoring. It's a containerized API meant to be deployed with the included compose file.
+## Running it
+
+`make up` starts everything, and `make down` stops it. Docker is the only
+thing you need on your machine.
+
+| Where | What |
+|---|---|
+| `http://localhost:8020` | the catalog service |
+| `http://localhost:9090` | Prometheus. It scrapes `GET /metrics` on the service every 5 seconds and evaluates every `*.yml` in `monitoring/rules/`. |
+| `http://localhost:9093` | Alertmanager. Every alert goes to the pager. |
+| `http://localhost:9099/pages` | the pager: every notification it received |
+| `http://localhost:3000` | Grafana, with Prometheus as its data source. It loads every dashboard JSON in `monitoring/dashboards/`. |
+
+Right now the service writes plain log lines and has no `/metrics`, so
+Prometheus shows its target as down.
+
+Timing, for anything you measure against a page: Prometheus scrapes and
+evaluates rules every 5 seconds, and Alertmanager groups alerts by name and
+waits 2 seconds before the first notification of a group. `make up` rebuilds
+the service after you change it; Grafana rereads `monitoring/dashboards/`
+every 10 seconds.
+
+## Commands
+
+- `make load` sends 100 requests, ten at a time, and prints
+  `requests=100 errors=0 error_rate=0.000 mean_ms=… p95_ms=…`.
+  Background traffic (10 requests a second) runs all the time anyway.
+- `make fault` makes every fifth price-store call fail and every call take
+  250 ms. `make fault-latency` makes every call take 2.5 seconds, with no
+  failures. `make clear-fault` turns both off.
+- `make rehearse` and `make rehearse-latency` run a paging rehearsal: they
+  wait until no alert has fired for 200 seconds (giving up after 500 with
+  `alerts keep firing with no fault on`), turn the fault on, and print
+  `fault=error first_page=<alert> seconds=<n>` with the page's annotations,
+  or `no page within 300s`. They clear the fault when they finish.
+- `make pages` prints what the pager has received.
+- `make reload` makes Prometheus reread `monitoring/rules/`.
+- `make contract` runs the contract tests against the service.
+- `make logs` follows the service's log.
+
+## Porting the service
+
+The service is Python and FastAPI; you can write it in another language. It
+must listen on port 8000 inside its container (the harness publishes it as 8020), read the price store's address from `STORE_URL`,
+and answer the routes in `contract/openapi.yaml`. Build it from
+`service/Dockerfile` (or point `harness/compose.yaml` at your directory),
+then run `make contract` until it passes. Everything else talks to it over
+HTTP, so the rest works unchanged.
